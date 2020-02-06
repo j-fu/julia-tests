@@ -3,9 +3,13 @@ using Distributed
 using Printf
 
 Distributed.@everywhere using SharedArrays
+################################################################
+# Helper methods
 
+# GFlops for vector triad
 GFlops(N)=N*2.0/1.0e9
 
+# Partition the range 1:N for a number of tasks
 function partition(N,ntasks)
     loop_begin=zeros(Int64,ntasks)
     loop_end=zeros(Int64,ntasks)
@@ -20,7 +24,7 @@ function partition(N,ntasks)
     return (loop_begin,loop_end)
 end
 
-
+# Create arrays for test
 function make_arrays(N)
     a = Array{Float64,1}(undef,N)
     b = Array{Float64,1}(undef,N)
@@ -36,6 +40,7 @@ function make_arrays(N)
     return(a,b,c,d)
 end
 
+# Create shared arrays for test
 function make_shared_arrays(N)
     (_a,_b,_c,_d)=make_arrays(N)
     a = SharedArray(_a)
@@ -45,7 +50,11 @@ function make_shared_arrays(N)
     return(a,b,c,d)
 end
 
-
+# Create an array of vector lengths of size nrun
+# starting with N0 and increasing in geometrica progression.
+# ppomag denotes the number of 
+# elements per order of magnitude.
+# Try to keep full powers of 10 at once.
 function vsizes(;N0=1000,ppomag=8,nrun=41)
     vsz=[N0]
     N=N0
@@ -63,6 +72,11 @@ end
 
 
 ##################################################################################
+# Tests
+
+# Scalar operation
+# In all cases, the triad is run nrepeat times, in order
+# to use the same measurement method as in the C code.
 function vtriad_scalar(N,nrepeat)
     (a,b,c,d)=make_arrays(N)
     t=@elapsed begin
@@ -76,6 +90,7 @@ function vtriad_scalar(N,nrepeat)
     return [N,GFlops(N*nrepeat)/t]
 end
 
+# fork-join style operation using  Threads.@threads 
 function vtriad_multithread_threads(N,nrepeat)
     (a,b,c,d)=make_arrays(N)
     t=@elapsed begin
@@ -89,6 +104,9 @@ function vtriad_multithread_threads(N,nrepeat)
     return [N,GFlops(N*nrepeat)/t]
 end
 
+
+
+# Kernel for spawn bases operation
 Distributed.@everywhere function _kernel(a,b,c,d,n0,n1)
     @inbounds @fastmath for i=n0:n1
         d[i]=a[i]+b[i]*c[i]
@@ -96,6 +114,7 @@ Distributed.@everywhere function _kernel(a,b,c,d,n0,n1)
     return 0
 end
 
+# Operation using  Threads.@spawn
 function vtriad_multithread_spawn(N,nrepeat)
     (a,b,c,d)=make_arrays(N)
     ntasks=Threads.nthreads()
@@ -109,8 +128,7 @@ function vtriad_multithread_spawn(N,nrepeat)
     return [N,GFlops(N*nrepeat)/t]
 end
 
-
-##################################################################################
+# Run scalar bencmark using SharedArrays
 function vtriad_scalar_shared(N,nrepeat)
     (a,b,c,d)=make_shared_arrays(N)
     t=@elapsed begin
@@ -125,6 +143,7 @@ function vtriad_scalar_shared(N,nrepeat)
 end
 
 
+# Multiprocessing using Distributed.@spawn and SharedArrays
 function vtriad_multiprocess_spawn(N,nrepeat)
     (a,b,c,d)=make_shared_arrays(N)
     
@@ -141,6 +160,7 @@ function vtriad_multiprocess_spawn(N,nrepeat)
 end
 
 
+# Multiprocessing using Distributed.@distributed and SharedArrays
 function vtriad_multiprocess_distributed(N,nrepeat)
     (a,b,c,d)=make_shared_arrays(N)
     t_parallel=@elapsed begin
@@ -157,9 +177,17 @@ end
 
 
 ##################################################################################
+# Test driver
+
 function run_vtriad(vtriad;N0=1000,ppomag=4,nrun=41,flopcount=5.0e8)
+    # Create vector sizes
     vsz=vsizes(N0=N0,ppomag=ppomag,nrun=nrun)
+
+    # Create result array
     result=zeros(2,length(vsz))
+
+    # Run test with increasing sizes, adapting nrepeat as to keep the
+    # number of operations constant and time a large enough batch
     for i=1:length(vsz)
         result[:,i].=vtriad(vsz[i],Int(ceil(flopcount/vsz[i])))
     end
@@ -193,7 +221,7 @@ function main(ARGS)
     # Number of array size increases
     nrun=41
     
-
+    # Run test
     if parsed_args["multiprocess-spawn"]
         @printf("# multiprocess-spawn nprocs=%d\n",Distributed.nprocs())
         result=run_vtriad(vtriad_multiprocess_spawn;N0=N0,ppomag=ppomag,nrun=nrun,flopcount=flopcount)
@@ -212,6 +240,8 @@ function main(ARGS)
     else
         return
     end
+
+    # Print result
     for i=1:size(result,2)
         @printf("% 10d %6.3f\n",result[1,i], result[2,i])
     end

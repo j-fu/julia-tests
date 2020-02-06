@@ -1,6 +1,7 @@
 using PyPlot
 using DelimitedFiles
 
+CPU=ENV["CPU"]
 
 scalar=readdlm("jlvtriad-scalar.dat",comments=true)'
 scalar_shared=readdlm("jlvtriad-scalar-shared.dat",comments=true)'
@@ -12,5 +13,6 @@ PyPlot.legend()
 PyPlot.grid()
 PyPlot.xlabel("Array Size")
 PyPlot.ylabel("GFlops/s")
-PyPlot.title("Scalar vector triad performance\nSharedArray vs. Array")
+PyPlot.title("SharedArray vs Array (scalar): A[i]=B[i]+C[i]*D[i]\n $(CPU)")
 PyPlot.savefig("shared-vs-normal-arrays.pdf")
+PyPlot.savefig("shared-vs-normal-arrays.png")
