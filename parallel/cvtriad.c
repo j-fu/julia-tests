@@ -32,7 +32,7 @@ void vtriad(int N, int nrepeat)
   }
   
   // Timing variables
-  double t0,t_scalar, t_parallel;
+  double t0,t_scalar, t_parallel, t_dparallel;
   
   // Run parallel version
   // Outer loop is for averaging results
@@ -46,7 +46,18 @@ void vtriad(int N, int nrepeat)
         d[i]=a[i]+b[i]*c[i];
       }
   t_parallel=omp_get_wtime()-t0;
+
   
+  t0=omp_get_wtime();
+  for (j=0; j<nrepeat;j++)
+#pragma omp parallel for schedule(dynamic,N/(omp_get_max_threads())) 
+      for (i=0;i<N;i++)
+      {
+        d[i]=a[i]+b[i]*c[i];
+      }
+  t_dparallel=omp_get_wtime()-t0;
+  
+
   // Run scalar version
   t0=omp_get_wtime();
   for (j=0; j<nrepeat;j++)
@@ -58,7 +69,7 @@ void vtriad(int N, int nrepeat)
 
   double GFlops=N*nrepeat*2.0/1.0e9;
 
-  printf("% 10d % 10.3f % 10.3f % 10.3f\n", N, GFlops/t_scalar,GFlops/t_parallel,t_scalar/t_parallel);
+  printf("% 10d % 10.3f % 10.3f % 10.3f\n", N, GFlops/t_scalar,GFlops/t_parallel,GFlops/t_dparallel);
   
   /* Free heap memory*/
   free(a);
@@ -118,7 +129,7 @@ int main(int argc, char *argv[])
   
   /* File header */
   printf("# nthreads=%d\n",omp_get_max_threads());
-  printf("#        N   S_GFlops/s  P_GFlops/s  speedup\n");
+  printf("#        N   S_GFlops/s  P_GFlops/s  Pd_GFlops/s\n");
   
   for (irun=0;irun<nrun;irun++)
   {

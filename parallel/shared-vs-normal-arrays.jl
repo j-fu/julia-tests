@@ -1,14 +1,18 @@
 using PyPlot
 using DelimitedFiles
 
-CPU=ENV["CPU"]
+CPU=Sys.cpu_info()[1].model
 
 scalar=readdlm("jlvtriad-scalar.dat",comments=true)'
 scalar_shared=readdlm("jlvtriad-scalar-shared.dat",comments=true)'
+scalar_avx=readdlm("jlvtriad-scalar-avx.dat",comments=true)'
+scalar_shared_avx=readdlm("jlvtriad-scalar-shared-avx.dat",comments=true)'
 
 PyPlot.clf()
-PyPlot.semilogx(scalar[1,:],scalar[2,:],label="Array")
-PyPlot.semilogx(scalar_shared[1,:],scalar_shared[2,:],label="SharedArray")
+PyPlot.semilogx(scalar[1,:],scalar[2,:],"g--",label="Array")
+PyPlot.semilogx(scalar_shared[1,:],scalar_shared[2,:],"r--",label="SharedArray")
+PyPlot.semilogx(scalar_avx[1,:],scalar_avx[2,:],"g",label="Array + avx")
+PyPlot.semilogx(scalar_shared_avx[1,:],scalar_shared_avx[2,:],"r",label="SharedArray+avx")
 PyPlot.legend()
 PyPlot.grid()
 PyPlot.xlabel("Array Size")

@@ -1,8 +1,10 @@
 using ArgParse
 using Distributed
+
 using Printf
 
 Distributed.@everywhere using SharedArrays
+Distributed.@everywhere using LoopVectorization
 ################################################################
 # Helper methods
 
@@ -80,8 +82,22 @@ end
 function vtriad_scalar(N,nrepeat)
     (a,b,c,d)=make_arrays(N)
     t=@elapsed begin
-        @inbounds @fastmath for j=1:nrepeat
-            for i=1:N
+        for j=1:nrepeat
+            @inbounds @fastmath  for i=1:N
+                d[i]=a[i]+b[i]*c[i]
+            end
+        end
+    end
+    GC.gc()
+    return [N,GFlops(N*nrepeat)/t]
+end
+
+# Same with avx
+function vtriad_scalar_avx(N,nrepeat)
+    (a,b,c,d)=make_arrays(N)
+    t=@elapsed begin
+        for j=1:nrepeat
+            @avx for i=1:N
                 d[i]=a[i]+b[i]*c[i]
             end
         end
@@ -95,8 +111,8 @@ function vtriad_multithread_threads(N,nrepeat)
     (a,b,c,d)=make_arrays(N)
     t=@elapsed begin
         for j=1:nrepeat
-            Threads.@threads for i=1:N
-                @inbounds @fastmath  d[i]=a[i]+b[i]*c[i]
+             Threads.@threads for i=1:N
+                 @inbounds @fastmath  d[i]=a[i]+b[i]*c[i]
             end
         end
     end
@@ -106,13 +122,24 @@ end
 
 
 
+
+
 # Kernel for spawn bases operation
-Distributed.@everywhere function _kernel(a,b,c,d,n0,n1)
-    @inbounds @fastmath for i=n0:n1
+Distributed.@everywhere function _kernel_avx(a,b,c,d,n0,n1)
+    @avx for i=n0:n1
         d[i]=a[i]+b[i]*c[i]
     end
     return 0
 end
+
+function _kernel(a,b,c,d,n0,n1)
+    @inbounds @fastmath  for i=n0:n1
+        d[i]=a[i]+b[i]*c[i]
+    end
+    return 0
+end
+
+
 
 # Operation using  Threads.@spawn
 function vtriad_multithread_spawn(N,nrepeat)
@@ -128,12 +155,52 @@ function vtriad_multithread_spawn(N,nrepeat)
     return [N,GFlops(N*nrepeat)/t]
 end
 
-# Run scalar bencmark using SharedArrays
+
+function threadcall_fetch(f,args...)
+    t=Threads.@spawn f(args...)
+    fetch(t)
+end
+
+# Operation using  Threads.@spawn (slower than multithead_spawn...)
+function vtriad_multithread_spawn_asyncmap(N,nrepeat)
+    (a,b,c,d)=make_arrays(N)
+    ntasks=Threads.nthreads()
+    loop_begin,loop_end=partition(N,ntasks)
+    function spwn(a,b,c,d,n0,n1)
+        t=Threads.@spawn _kernel(a,b,c,d,n0,n1)
+        fetch(t)
+    end
+    t=@elapsed begin
+        for j=1:nrepeat
+            res=asyncmap(i->threadcall_fetch(_kernel,a,b,c,d,loop_begin[i],loop_end[i]),1:ntasks)
+        end
+    end
+    GC.gc()
+    return [N,GFlops(N*nrepeat)/t]
+end
+
+
+
+# Run scalar benchmark using SharedArrays
 function vtriad_scalar_shared(N,nrepeat)
     (a,b,c,d)=make_shared_arrays(N)
     t=@elapsed begin
-        @inbounds @fastmath for j=1:nrepeat
-            for i=1:N
+        for j=1:nrepeat
+            @inbounds @fastmath  for i=1:N
+                d[i]=a[i]+b[i]*c[i]
+            end
+        end
+    end
+    GC.gc()
+    return [N,GFlops(N*nrepeat)/t]
+end
+
+# Run scalar benchmark using SharedArrays
+function vtriad_scalar_shared_avx(N,nrepeat)
+    (a,b,c,d)=make_shared_arrays(N)
+    t=@elapsed begin
+        for j=1:nrepeat
+            @avx for i=1:N
                 d[i]=a[i]+b[i]*c[i]
             end
         end
@@ -147,12 +214,12 @@ end
 function vtriad_multiprocess_spawn(N,nrepeat)
     (a,b,c,d)=make_shared_arrays(N)
     
-    ntasks=Threads.nthreads()
+    ntasks=Distributed.nprocs()
     loop_begin,loop_end=partition(N,ntasks)
     
     t=@elapsed begin
         for j=1:nrepeat
-            mapreduce(task->fetch(task),+,[Distributed.@spawn _kernel(a,b,c,d,loop_begin[i],loop_end[i]) for i=1:ntasks])
+            mapreduce(task->fetch(task),+,[Distributed.@spawn _kernel_avx(a,b,c,d,loop_begin[i],loop_end[i]) for i=1:ntasks])
         end
     end
     GC.gc()
@@ -166,7 +233,7 @@ function vtriad_multiprocess_distributed(N,nrepeat)
     t_parallel=@elapsed begin
         for j=1:nrepeat
                 Distributed.@sync Distributed.@distributed for i=1:N
-                @inbounds @fastmath  d[i]=a[i]+b[i]*c[i]
+                @avx  d[i]=a[i]+b[i]*c[i]
             end
         end
     end
@@ -200,7 +267,9 @@ function main(ARGS)
     settings = ArgParseSettings()
     add_arg_table(settings,
                   ["--scalar"],          Dict(:help => "scalar vtriad",:action => :store_true),
+                  ["--scalar-avx"],          Dict(:help => "scalar vtriad+avx",:action => :store_true),
                   ["--scalar-shared"],          Dict(:help => "scalar vtriad with shared arrays",:action => :store_true),
+                  ["--scalar-shared-avx"],          Dict(:help => "scalar vtriad with shared arrays+avx",:action => :store_true),
                   ["--multithread-threads"],     Dict(:help => "Threads.@threads",:action => :store_true),
                   ["--multithread-spawn"],     Dict(:help => "Threads.@spawn",:action => :store_true),
                   ["--multiprocess-spawn"],     Dict(:help => "Distributed.@spawn with SharedArrays",:action => :store_true),
@@ -217,9 +286,11 @@ function main(ARGS)
     
     # Data points per orders of magnitude (of array size)
     ppomag=8
+#    ppomag=2
     
     # Number of array size increases
     nrun=41
+#    nrun=5
     
     # Run test
     if parsed_args["multiprocess-spawn"]
@@ -228,14 +299,20 @@ function main(ARGS)
     elseif parsed_args["scalar"]
         @printf("# scalar\n")
         result=run_vtriad(vtriad_scalar;N0=N0,ppomag=ppomag,nrun=nrun,flopcount=flopcount)
+    elseif parsed_args["scalar-avx"]
+        @printf("# scalar-avx\n")
+        result=run_vtriad(vtriad_scalar_avx;N0=N0,ppomag=ppomag,nrun=nrun,flopcount=flopcount)
     elseif parsed_args["scalar-shared"]
         @printf("# scalar-shared\n")
         result=run_vtriad(vtriad_scalar_shared;N0=N0,ppomag=ppomag,nrun=nrun,flopcount=flopcount)
+    elseif parsed_args["scalar-shared-avx"]
+        @printf("# scalar-shared-avx\n")
+        result=run_vtriad(vtriad_scalar_shared_avx;N0=N0,ppomag=ppomag,nrun=nrun,flopcount=flopcount)
     elseif parsed_args["multithread-spawn"]
         @printf("# multithread-spawn nthreads=%d\n",Threads.nthreads())
         result=run_vtriad(vtriad_multithread_spawn;N0=N0,ppomag=ppomag,nrun=nrun,flopcount=flopcount)
     elseif parsed_args["multithread-threads"]
-        @printf("# multiprocess-threads nthreads=%d\n",Threads.nthreads())
+        @printf("# multithread-threads nthreads=%d\n",Threads.nthreads())
         result=run_vtriad(vtriad_multithread_threads;N0=N0,ppomag=ppomag,nrun=nrun,flopcount=flopcount)
     else
         return
