@@ -9,6 +9,12 @@ version = "0.6.2"
 [[Base64]]
 uuid = "2a0f44e3-6c83-55bd-87e4-b1978d98bd5f"
 
+[[BinaryProvider]]
+deps = ["Libdl", "SHA"]
+git-tree-sha1 = "5b08ed6036d9d3f0ee6369410b830f8873d4024c"
+uuid = "b99e7846-7c00-51b0-8f62-c81ae34c0232"
+version = "0.5.8"
+
 [[ColorTypes]]
 deps = ["FixedPointNumbers", "Random"]
 git-tree-sha1 = "b9de8dc6106e09c79f3f776c27c62360d30e5eb8"
@@ -61,6 +67,12 @@ uuid = "8ba89e20-285c-5b6f-9357-94700520ee1b"
 git-tree-sha1 = "4aaea64dd0c30ad79037084f8ca2b94348e65eaa"
 uuid = "53c48c17-4a7d-5ca2-90c5-79b7896eea93"
 version = "0.7.1"
+
+[[Hwloc]]
+deps = ["BinaryProvider", "Libdl"]
+path = "/home/fuhrmann/Wias/work/julia/dev/Hwloc"
+uuid = "0e44f5e4-bd66-52a0-8798-143a42290a1d"
+version = "1.0.3"
 
 [[InteractiveUtils]]
 deps = ["Markdown"]
@@ -172,15 +184,15 @@ uuid = "ea8e919c-243c-51af-8825-aaa63cd721ce"
 
 [[SIMDPirates]]
 deps = ["VectorizationBase"]
-git-tree-sha1 = "721fb00de2cfc90b29155a6476c0e0e306a4a1ea"
+git-tree-sha1 = "9bbd51cc7e31471d9957a107300d2edd109c3c42"
 uuid = "21efa798-c60a-11e8-04d3-e1a92915a26a"
-version = "0.3.7"
+version = "0.3.8"
 
 [[SLEEFPirates]]
 deps = ["Libdl", "SIMDPirates", "VectorizationBase"]
-git-tree-sha1 = "2137e852f44a1a1653d2a4b743568f08a624e198"
+git-tree-sha1 = "782448fc95bee4aab976a207cc63936a37e943dd"
 uuid = "476501e8-09a2-5ece-8869-fb82de89a1fa"
-version = "0.3.3"
+version = "0.3.5"
 
 [[Serialization]]
 uuid = "9e88b42a-f829-5b0c-bbe9-9e923198166b"

@@ -1,3 +1,15 @@
+description="""
+Schoenauer vector triade benchmark    
+See e.g. https://blogs.fau.de/hager/archives/tag/benchmarking
+
+Run multithreaded test e.g. with
+JULIA_NUM_THREADS=4 julia --multithread-threads
+
+Run multiporcess test e.g. with
+julia -p 4 --multiprocess-distributed
+
+"""
+
 using ArgParse
 using Distributed
 
@@ -227,12 +239,13 @@ function vtriad_multiprocess_spawn(N,nrepeat)
 end
 
 
+
 # Multiprocessing using Distributed.@distributed and SharedArrays
 function vtriad_multiprocess_distributed(N,nrepeat)
     (a,b,c,d)=make_shared_arrays(N)
-    t_parallel=@elapsed begin
+    t=@elapsed begin
         for j=1:nrepeat
-                Distributed.@sync Distributed.@distributed for i=1:N
+            Distributed.@sync Distributed.@distributed for i=1:N
                 @avx  d[i]=a[i]+b[i]*c[i]
             end
         end
@@ -265,37 +278,61 @@ end
 function main(ARGS)
     
     settings = ArgParseSettings()
-    add_arg_table(settings,
-                  ["--scalar"],          Dict(:help => "scalar vtriad",:action => :store_true),
-                  ["--scalar-avx"],          Dict(:help => "scalar vtriad+avx",:action => :store_true),
-                  ["--scalar-shared"],          Dict(:help => "scalar vtriad with shared arrays",:action => :store_true),
-                  ["--scalar-shared-avx"],          Dict(:help => "scalar vtriad with shared arrays+avx",:action => :store_true),
-                  ["--multithread-threads"],     Dict(:help => "Threads.@threads",:action => :store_true),
-                  ["--multithread-spawn"],     Dict(:help => "Threads.@spawn",:action => :store_true),
-                  ["--multiprocess-spawn"],     Dict(:help => "Distributed.@spawn with SharedArrays",:action => :store_true),
-                  ["--multiprocess-distributed"],     Dict(:help => "Distributed.@distrubuted with SharedArrays",:action => :store_true),
-                  )
-    
+    settings.preformatted_description=true
+    settings.description=description
+    @add_arg_table settings begin
+
+        "--nrun"   help= "number of runs"
+        default=41
+        
+        "--flopcount"  help= "number of flops per run"
+        default=5.0e8
+        
+        "--N0"  help= "smallest array size"
+        default=1000
+        
+        "--ppomag"  help= "points per order of magnitude"
+        default=8
+
+        "--scalar" help= "scalar vtriad"
+        action=:store_true
+
+        "--scalar-avx" help= "scalar vtriad+avx"
+        action=:store_true
+
+        "--scalar-shared" help= "scalar vtriad with shared arrays"
+        action=:store_true
+
+        "--scalar-shared-avx" help= "scalar vtriad with shared arrays+avx"
+        action=:store_true
+        
+        "--multithread-threads" help= "Threads.@threads"
+        action=:store_true
+        
+        "--multithread-spawn"  help= "Threads.@spawn"
+        action=:store_true
+        
+        "--multiprocess-spawn"  help= "Distributed.@spawn with SharedArrays"
+        action=:store_true
+        
+        "--multiprocess-distributed" help= "Distributed.@distrubuted with SharedArrays"
+        action=:store_true
+
+    end
     parsed_args=parse_args(ARGS, settings)
     
-    # Approximate number of FLOPs per measurement 
-    flopcount=5.0e8
-    
-    # Smallest array size 
-    N0=1000
-    
-    # Data points per orders of magnitude (of array size)
-    ppomag=8
-#    ppomag=2
-    
-    # Number of array size increases
-    nrun=41
-#    nrun=5
+    flopcount=parsed_args["flopcount"]
+    ppomag=parsed_args["ppomag"]
+    N0=parsed_args["N0"]
+    nrun=parsed_args["nrun"]
     
     # Run test
     if parsed_args["multiprocess-spawn"]
         @printf("# multiprocess-spawn nprocs=%d\n",Distributed.nprocs())
         result=run_vtriad(vtriad_multiprocess_spawn;N0=N0,ppomag=ppomag,nrun=nrun,flopcount=flopcount)
+    elseif parsed_args["multiprocess-distributed"]
+        @printf("# multiprocess-distributed nprocs=%d\n",Distributed.nprocs())
+        result=run_vtriad(vtriad_multiprocess_distributed;N0=N0,ppomag=ppomag,nrun=nrun,flopcount=flopcount)
     elseif parsed_args["scalar"]
         @printf("# scalar\n")
         result=run_vtriad(vtriad_scalar;N0=N0,ppomag=ppomag,nrun=nrun,flopcount=flopcount)
@@ -319,6 +356,7 @@ function main(ARGS)
     end
 
     # Print result
+    @printf("# Array size  GFlops/s\n")
     for i=1:size(result,2)
         @printf("% 10d %6.3f\n",result[1,i], result[2,i])
     end

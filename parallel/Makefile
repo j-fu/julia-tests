@@ -43,7 +43,7 @@ jlvtriad-scalar-shared-avx.dat: jlvtriad.jl
 	julia --project jlvtriad.jl --scalar-shared-avx  >  $@
 
 jlvtriad-multiprocess.dat: jlvtriad.jl
-	julia -np 4 --project jlvtriad.jl --multiprocess_spawn  >  $@
+	julia -p 4 --project jlvtriad.jl --multiprocess_spawn  >  $@
 
 #######################################
 # Create pdfs
